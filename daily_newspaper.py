@@ -26,6 +26,8 @@ from reportlab.platypus import (
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch, cm
 from dotenv import load_dotenv
+from bs4 import BeautifulSoup
+import html2text
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -36,8 +38,8 @@ load_dotenv()  # Load environment variables from .env file
 # Hacker News
 HN_TOP_STORIES_URL = "https://hacker-news.firebaseio.com/v0/topstories.json"
 
-# RSS Feeds (Swiss RTS, Le Temps)
-RTS_NEWS_RSS = "https://www.rts.ch/info/rss"
+# RSS Feeds and News Sites
+RTS_URL = "https://www.rts.ch/"
 LE_TEMPS_RSS = "https://www.letemps.ch/articles.rss"
 
 # Weather: Open-Meteo API
@@ -82,7 +84,7 @@ def summarize_text_with_openai(text, max_tokens=150, temperature=0.7, language=D
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[{
                 "role": "system",
                 "content": f"You are an experienced newspaper editor. Create engaging, well-written summaries in a journalistic style. Always write in {language}."
@@ -227,6 +229,78 @@ def fetch_weather(city_url):
             return "Weather data not found."
     except Exception as e:
         return f"[ERROR] Weather fetch: {e}"
+
+def fetch_rts_news(limit=5, language=DEFAULT_LANGUAGE):
+    """
+    Scrape news from RTS website and use AI to select and summarize top stories.
+    """
+    items = []
+    try:
+        # Fetch the main page
+        response = requests.get(RTS_URL, timeout=10)
+        response.raise_for_status()
+        
+        # Parse HTML
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Convert HTML to plain text for better processing
+        h = html2text.HTML2Text()
+        h.ignore_links = True
+        h.ignore_images = True
+        page_text = h.handle(str(soup))
+        
+        # Use AI to identify and extract top stories
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        # First, let AI identify the most important stories
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "system",
+                "content": f"You are a news editor for RTS. Analyze the webpage content and identify the {limit} most important news stories. Focus on actual news articles, not TV shows or programs. Return the results in a structured format with title and content clearly separated."
+            },
+            {
+                "role": "user",
+                "content": f"Here's the RTS webpage content. Identify the {limit} most important news stories, extracting their titles and content. Format your response as 'TITLE: xxx\nCONTENT: yyy' for each story:\n\n{page_text}"
+            }],
+            max_tokens=1000,
+            temperature=0.3
+        )
+        
+        # Parse AI response and extract stories
+        stories_text = response.choices[0].message.content.strip()
+        story_blocks = stories_text.split('\n\n')
+        
+        for block in story_blocks:
+            if not block.strip():
+                continue
+                
+            lines = block.split('\n')
+            title = ""
+            content = ""
+            
+            for line in lines:
+                if line.startswith("TITLE:"):
+                    title = line.replace("TITLE:", "").strip()
+                elif line.startswith("CONTENT:"):
+                    content = line.replace("CONTENT:", "").strip()
+            
+            if title and content:
+                # Summarize the content in the target language
+                summary = summarize_text_with_openai(content, language=language)
+                items.append({
+                    "title": title,
+                    "content": summary
+                })
+                
+            if len(items) >= limit:
+                break
+                
+    except Exception as e:
+        print(f"[ERROR] RTS fetch error: {e}")
+    
+    return items
 
 # ------------------------------------------------------
 # PDF GENERATION
@@ -375,6 +449,20 @@ def main():
                 content.append("")
                 content.append("Discussion Analysis:")
                 content.append(item['comments_analysis'])
+            content.append("")  # Add spacing between articles
+    
+    # Fetch and process RTS news
+    print("Fetching RTS news...")
+    rts_news = fetch_rts_news(MAX_ITEMS, DEFAULT_LANGUAGE)
+    
+    if rts_news:
+        content.append("RTS - TOP STORIES")
+        content.append("-" * 40)
+        for idx, item in enumerate(rts_news, 1):
+            content.append(f"{idx}. {item['title']}")
+            if item.get('content'):
+                content.append("")
+                content.append(item['content'])
             content.append("")  # Add spacing between articles
     
     # Fetch and process Le Temps news
