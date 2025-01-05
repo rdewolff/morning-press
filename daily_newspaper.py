@@ -278,8 +278,12 @@ def print_pdf(pdf_filename, printer_name=""):
 # MAIN
 # ------------------------------------------------------
 def main():
+    # Create press directory if it doesn't exist
+    press_dir = "press"
+    os.makedirs(press_dir, exist_ok=True)
+
     now = datetime.datetime.now()
-    pdf_filename = f"{PDF_PREFIX}_{now.strftime('%Y%m%d_%H%M%S')}.pdf"
+    pdf_filename = os.path.join(press_dir, f"{PDF_PREFIX}_{now.strftime('%Y%m%d_%H%M%S')}.pdf")
 
     # Step 1: Gather data
 
