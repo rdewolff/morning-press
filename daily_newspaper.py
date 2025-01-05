@@ -119,6 +119,9 @@ FALLBACK_QUOTES = [
     }
 ]
 
+# ZenQuotes API
+ZENQUOTES_API_URL = "https://zenquotes.io/api/random"
+
 # ------------------------------------------------------
 # OPTIONAL: OPENAI SUMMARIZATION
 # ------------------------------------------------------
@@ -360,14 +363,14 @@ def fetch_rts_news(limit=5, language=DEFAULT_LANGUAGE):
 
 def fetch_random_quote(language=DEFAULT_LANGUAGE):
     """
-    Fetch and translate a random quote from a famous person.
-    Falls back to a predefined list if the API fails.
+    Fetch a random quote from ZenQuotes API and translate if needed.
+    Falls back to predefined list if the API fails.
     """
     try:
-        # First try the Quotable API
-        response = requests.get("https://api.quotable.io/random", timeout=5)  # Reduced timeout
+        # First try the ZenQuotes API
+        response = requests.get(ZENQUOTES_API_URL, timeout=5)
         response.raise_for_status()
-        quote_data = response.json()
+        quote_data = response.json()[0]  # API returns array with single quote
         
         # If not in target language, translate it
         if language.lower() != "english":
@@ -378,11 +381,11 @@ def fetch_random_quote(language=DEFAULT_LANGUAGE):
                 model="gpt-4",
                 messages=[{
                     "role": "system",
-                    "content": f"You are a professional translator. Translate this quote to {language}, maintaining its poetic and impactful nature."
+                    "content": f"You are a professional translator specializing in literary and philosophical texts. Translate this quote to {language}, maintaining its poetic and impactful nature while ensuring it sounds natural."
                 },
                 {
                     "role": "user",
-                    "content": f'Translate this quote and author name: "{quote_data["content"]}" - {quote_data["author"]}'
+                    "content": f'Translate this quote and author name with elegance: "{quote_data["q"]}" - {quote_data["a"]}'
                 }],
                 temperature=0.7
             )
@@ -393,11 +396,16 @@ def fetch_random_quote(language=DEFAULT_LANGUAGE):
                 quote, author = translated.rsplit(" - ", 1)
             else:
                 quote = translated
-                author = quote_data["author"]
+                author = quote_data["a"]
             
             return {
                 "quote": quote.strip('"'),
                 "author": author
+            }
+        else:
+            return {
+                "quote": quote_data["q"],
+                "author": quote_data["a"]
             }
             
     except Exception as e:
