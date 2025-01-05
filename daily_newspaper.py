@@ -68,10 +68,14 @@ MAX_ITEMS = 5
 # Default language for summaries
 DEFAULT_LANGUAGE = "french"
 
+# Summary configuration
+SUMMARY_MAX_TOKENS = 300  # Increased from 150
+SUMMARY_TEMPERATURE = 0.5  # Reduced for more focused summaries
+
 # ------------------------------------------------------
 # OPTIONAL: OPENAI SUMMARIZATION
 # ------------------------------------------------------
-def summarize_text_with_openai(text, max_tokens=150, temperature=0.7, language=DEFAULT_LANGUAGE):
+def summarize_text_with_openai(text, max_tokens=SUMMARY_MAX_TOKENS, temperature=SUMMARY_TEMPERATURE, language=DEFAULT_LANGUAGE):
     """
     Summarize a given text using OpenAI GPT-4 API.
     Returns an engaging newspaper-style summary in the specified language.
@@ -84,14 +88,18 @@ def summarize_text_with_openai(text, max_tokens=150, temperature=0.7, language=D
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4",
             messages=[{
                 "role": "system",
-                "content": f"You are an experienced newspaper editor. Create engaging, well-written summaries in a journalistic style. Always write in {language}."
+                "content": f"""You are an experienced newspaper editor who writes concise, impactful summaries.
+                Write in {language}.
+                Focus on the key points and maintain journalistic style.
+                Be concise but ensure all important information is included.
+                Aim for 2-3 short paragraphs maximum."""
             },
             {
                 "role": "user",
-                "content": f"Summarize this news article in an engaging way, like a professional newspaper. Write in {language}. Don't include any URLs or references:\n\n{text}"
+                "content": f"Write a concise newspaper summary of this article. Focus on the most newsworthy elements:\n\n{text}"
             }],
             max_tokens=max_tokens,
             temperature=temperature,
@@ -133,7 +141,7 @@ def fetch_hackernews_top_stories(limit=5, language=DEFAULT_LANGUAGE):
                     article_response = requests.get(url, timeout=10)
                     if article_response.status_code == 200:
                         content_summary = summarize_text_with_openai(
-                            article_response.text[:4000],
+                            article_response.text[:8000],  # Increased from 4000
                             language=language
                         )
                 except Exception as e:
@@ -157,8 +165,9 @@ def fetch_hackernews_top_stories(limit=5, language=DEFAULT_LANGUAGE):
                 if comments:
                     comments_text = "\n".join(comments)
                     comments_analysis = summarize_text_with_openai(
-                        f"Analyze these top comments from the discussion:\n\n{comments_text}",
-                        language=language
+                        f"Analyze these key points from the discussion comments. Be concise but insightful:\n\n{comments_text}",
+                        language=language,
+                        max_tokens=200  # Specific limit for comments analysis
                     )
             
             result.append({
@@ -318,7 +327,7 @@ def build_newspaper_pdf(pdf_filename, story_content):
         pagesize=A4,
         leftMargin=1 * cm,
         rightMargin=1 * cm,
-        topMargin=1 * cm,
+        topMargin=1.5 * cm,  # Increased top margin for header
         bottomMargin=1 * cm,
     )
 
@@ -355,49 +364,102 @@ def build_newspaper_pdf(pdf_filename, story_content):
 
     styles = getSampleStyleSheet()
 
-    old_newspaper_style = ParagraphStyle(
-        "OldNewspaper",
+    # Main newspaper title style
+    masthead_style = ParagraphStyle(
+        "Masthead",
+        parent=styles["Title"],
+        fontName="Times-Bold",
+        fontSize=32,
+        leading=36,
+        alignment=1,  # Center
+        textColor=colors.black,
+        spaceAfter=6
+    )
+
+    # Date and weather style (subtitle)
+    subtitle_style = ParagraphStyle(
+        "Subtitle",
+        parent=styles["Normal"],
+        fontName="Times-Italic",
+        fontSize=12,
+        leading=14,
+        alignment=1,  # Center
+        textColor=colors.black,
+        spaceBefore=0,
+        spaceAfter=20
+    )
+
+    # Section headers (e.g., "HACKER NEWS - TOP STORIES")
+    section_header_style = ParagraphStyle(
+        "SectionHeader",
+        parent=styles["Heading1"],
+        fontName="Times-Bold",
+        fontSize=16,
+        leading=20,
+        alignment=0,  # Left
+        textColor=colors.black,
+        spaceBefore=15,
+        spaceAfter=10
+    )
+
+    # Article titles
+    article_title_style = ParagraphStyle(
+        "ArticleTitle",
+        parent=styles["Heading2"],
+        fontName="Times-Bold",
+        fontSize=12,
+        leading=14,
+        alignment=0,  # Left
+        textColor=colors.black,
+        spaceBefore=10,
+        spaceAfter=6
+    )
+
+    # Regular article text
+    article_style = ParagraphStyle(
+        "Article",
         parent=styles["Normal"],
         fontName="Times-Roman",
         fontSize=10,
-        leading=13,
+        leading=12,
         alignment=4,  # Justify
-    )
-
-    headline_style = ParagraphStyle(
-        "Headline",
-        parent=styles["Title"],
-        fontName="Times-Bold",
-        fontSize=18,
-        leading=22,
-        alignment=1,  # Center
-        textColor=colors.black
+        firstLineIndent=20,
+        spaceBefore=0,
+        spaceAfter=8
     )
 
     # Build flowables
     flowables = []
 
-    # Add big headline
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    flowables.append(Paragraph(f"Morning Press - {date_str}", headline_style))
-    flowables.append(Spacer(1, 0.2 * inch))
+    # Add masthead (main title)
+    date_str = datetime.datetime.now().strftime("%d %B %Y")
+    flowables.append(Paragraph("Morning Press", masthead_style))
+    flowables.append(Paragraph(date_str, subtitle_style))
 
-    # Add story content
-    for paragraph_text in story_content:
-        # Each paragraph_text is a string
-        p = Paragraph(paragraph_text, old_newspaper_style)
-        flowables.append(p)
-        flowables.append(Spacer(1, 0.2 * cm))
+    # Process content with appropriate styles
+    current_section = None
+    
+    for text in story_content:
+        if not text.strip():
+            continue
+            
+        # Section headers (all caps with dashes)
+        if text.isupper() and "-" in text:
+            flowables.append(Paragraph(text, section_header_style))
+            current_section = text
+        # Article titles (numbered items)
+        elif text.strip().startswith(("1.", "2.", "3.", "4.", "5.")):
+            title_text = text.split(". ", 1)[1] if ". " in text else text
+            flowables.append(Paragraph(title_text, article_title_style))
+        # Regular content
+        else:
+            flowables.append(Paragraph(text, article_style))
 
     # Build the PDF
     doc.build(flowables)
 
 def print_pdf(pdf_filename, printer_name=""):
-    """
-    Print the PDF file using the 'lpr' command (common on Linux/macOS).
-    :param pdf_filename: path to the PDF
-    :param printer_name: optional printer name
-    """
+    """Print the PDF file using the 'lpr' command."""
     if not os.path.exists(pdf_filename):
         print(f"[ERROR] PDF file not found: {pdf_filename}")
         return
