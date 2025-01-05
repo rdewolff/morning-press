@@ -63,13 +63,16 @@ PDF_PREFIX = "morning_press"
 # Max number of items to fetch per source
 MAX_ITEMS = 5
 
+# Default language for summaries
+DEFAULT_LANGUAGE = "french"
+
 # ------------------------------------------------------
 # OPTIONAL: OPENAI SUMMARIZATION
 # ------------------------------------------------------
-def summarize_text_with_openai(text, max_tokens=150, temperature=0.7):
+def summarize_text_with_openai(text, max_tokens=150, temperature=0.7, language=DEFAULT_LANGUAGE):
     """
     Summarize a given text using OpenAI GPT-4 API.
-    Returns an engaging newspaper-style summary.
+    Returns an engaging newspaper-style summary in the specified language.
     """
     from openai import OpenAI
 
@@ -79,14 +82,14 @@ def summarize_text_with_openai(text, max_tokens=150, temperature=0.7):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4",
             messages=[{
                 "role": "system",
-                "content": "You are an experienced newspaper editor. Create engaging, well-written summaries in a journalistic style."
+                "content": f"You are an experienced newspaper editor. Create engaging, well-written summaries in a journalistic style. Always write in {language}."
             },
             {
                 "role": "user",
-                "content": f"Summarize this news article in an engaging way, like a professional newspaper. Don't include any URLs or references:\n\n{text}"
+                "content": f"Summarize this news article in an engaging way, like a professional newspaper. Write in {language}. Don't include any URLs or references:\n\n{text}"
             }],
             max_tokens=max_tokens,
             temperature=temperature,
@@ -100,7 +103,7 @@ def summarize_text_with_openai(text, max_tokens=150, temperature=0.7):
 # ------------------------------------------------------
 # DATA FETCHING FUNCTIONS
 # ------------------------------------------------------
-def fetch_hackernews_top_stories(limit=5):
+def fetch_hackernews_top_stories(limit=5, language=DEFAULT_LANGUAGE):
     """
     Fetch top stories from Hacker News, including content and top comments.
     Returns a list of dictionaries with story details and analysis.
@@ -127,7 +130,10 @@ def fetch_hackernews_top_stories(limit=5):
                 try:
                     article_response = requests.get(url, timeout=10)
                     if article_response.status_code == 200:
-                        content_summary = summarize_text_with_openai(article_response.text[:4000])
+                        content_summary = summarize_text_with_openai(
+                            article_response.text[:4000],
+                            language=language
+                        )
                 except Exception as e:
                     print(f"[WARN] Could not fetch article content: {e}")
             
@@ -149,7 +155,8 @@ def fetch_hackernews_top_stories(limit=5):
                 if comments:
                     comments_text = "\n".join(comments)
                     comments_analysis = summarize_text_with_openai(
-                        f"Analyze these top comments from the discussion:\n\n{comments_text}"
+                        f"Analyze these top comments from the discussion:\n\n{comments_text}",
+                        language=language
                     )
             
             result.append({
@@ -163,7 +170,7 @@ def fetch_hackernews_top_stories(limit=5):
         print(f"[ERROR] Hacker News fetch error: {e}")
     return result
 
-def fetch_rss_headlines(feed_url, limit=5):
+def fetch_rss_headlines(feed_url, limit=5, language=DEFAULT_LANGUAGE):
     """
     Fetch headlines and content from an RSS feed, returning a list of dicts with 'title', 'description'.
     """
@@ -177,7 +184,7 @@ def fetch_rss_headlines(feed_url, limit=5):
             
             # If we have OpenAI enabled, summarize the content
             if USE_OPENAI_SUMMARY and content:
-                content = summarize_text_with_openai(content)
+                content = summarize_text_with_openai(content, language=language)
             
             items.append({
                 "title": title,
@@ -353,7 +360,7 @@ def main():
     
     # Fetch and process Hacker News stories
     print("Fetching Hacker News stories...")
-    hn_news = fetch_hackernews_top_stories(MAX_ITEMS)
+    hn_news = fetch_hackernews_top_stories(MAX_ITEMS, DEFAULT_LANGUAGE)
     
     if hn_news:
         content.append("HACKER NEWS - TOP STORIES")
@@ -372,7 +379,7 @@ def main():
     
     # Fetch and process Le Temps news
     print("Fetching Le Temps news...")
-    le_temps_news = fetch_rss_headlines(LE_TEMPS_RSS, MAX_ITEMS)
+    le_temps_news = fetch_rss_headlines(LE_TEMPS_RSS, MAX_ITEMS, DEFAULT_LANGUAGE)
     
     if le_temps_news:
         content.append("LE TEMPS - TOP STORIES")
