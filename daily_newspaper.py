@@ -28,6 +28,8 @@ from reportlab.lib.units import inch, cm
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 import html2text
+from babel.dates import format_date
+import locale
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -71,6 +73,51 @@ DEFAULT_LANGUAGE = "french"
 # Summary configuration
 SUMMARY_MAX_TOKENS = 300  # Increased from 150
 SUMMARY_TEMPERATURE = 0.5  # Reduced for more focused summaries
+
+# Set locale for date formatting
+try:
+    locale.setlocale(locale.LC_TIME, 'fr_FR.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_TIME, 'fr_FR')
+    except:
+        print("[WARN] Could not set French locale, falling back to default")
+
+# Fallback quotes in French
+FALLBACK_QUOTES = [
+    {
+        "quote": "La vie est courte, l'art est long.",
+        "author": "Hippocrate"
+    },
+    {
+        "quote": "Je pense, donc je suis.",
+        "author": "René Descartes"
+    },
+    {
+        "quote": "Un petit pas pour l'homme, un grand pas pour l'humanité.",
+        "author": "Neil Armstrong"
+    },
+    {
+        "quote": "La beauté est dans les yeux de celui qui regarde.",
+        "author": "Oscar Wilde"
+    },
+    {
+        "quote": "L'imagination est plus importante que le savoir.",
+        "author": "Albert Einstein"
+    },
+    {
+        "quote": "Le doute est le commencement de la sagesse.",
+        "author": "Aristote"
+    },
+    {
+        "quote": "La liberté des uns s'arrête là où commence celle des autres.",
+        "author": "Jean-Paul Sartre"
+    },
+    {
+        "quote": "Le hasard ne favorise que les esprits préparés.",
+        "author": "Louis Pasteur"
+    }
+]
 
 # ------------------------------------------------------
 # OPTIONAL: OPENAI SUMMARIZATION
@@ -311,6 +358,53 @@ def fetch_rts_news(limit=5, language=DEFAULT_LANGUAGE):
     
     return items
 
+def fetch_random_quote(language=DEFAULT_LANGUAGE):
+    """
+    Fetch and translate a random quote from a famous person.
+    Falls back to a predefined list if the API fails.
+    """
+    try:
+        # First try the Quotable API
+        response = requests.get("https://api.quotable.io/random", timeout=5)  # Reduced timeout
+        response.raise_for_status()
+        quote_data = response.json()
+        
+        # If not in target language, translate it
+        if language.lower() != "english":
+            from openai import OpenAI
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            
+            response = client.chat.completions.create(
+                model="gpt-4",
+                messages=[{
+                    "role": "system",
+                    "content": f"You are a professional translator. Translate this quote to {language}, maintaining its poetic and impactful nature."
+                },
+                {
+                    "role": "user",
+                    "content": f'Translate this quote and author name: "{quote_data["content"]}" - {quote_data["author"]}'
+                }],
+                temperature=0.7
+            )
+            translated = response.choices[0].message.content.strip()
+            
+            # Split the translation back into quote and author
+            if " - " in translated:
+                quote, author = translated.rsplit(" - ", 1)
+            else:
+                quote = translated
+                author = quote_data["author"]
+            
+            return {
+                "quote": quote.strip('"'),
+                "author": author
+            }
+            
+    except Exception as e:
+        print(f"[INFO] Using fallback quote system: {str(e)}")
+        # Use fallback quotes if API fails
+        return random.choice(FALLBACK_QUOTES)
+
 # ------------------------------------------------------
 # PDF GENERATION
 # ------------------------------------------------------
@@ -332,9 +426,9 @@ def build_newspaper_pdf(pdf_filename, story_content):
     )
 
     gutter = 0.5 * cm
-    column_width = (page_width - 2 * doc.leftMargin - gutter) / 2
+    column_width = (page_width - 2 * doc.leftMargin - 2 * gutter) / 3  # Adjusted for 3 columns
 
-    # Define two columns (Frames)
+    # Define three columns (Frames)
     frame1 = Frame(
         doc.leftMargin,
         doc.bottomMargin,
@@ -359,7 +453,19 @@ def build_newspaper_pdf(pdf_filename, story_content):
         showBoundary=0
     )
 
-    page_template = PageTemplate(id="TwoColumns", frames=[frame1, frame2])
+    frame3 = Frame(
+        doc.leftMargin + 2 * (column_width + gutter),
+        doc.bottomMargin,
+        column_width,
+        page_height - doc.topMargin - doc.bottomMargin,
+        leftPadding=0,
+        bottomPadding=0,
+        rightPadding=0,
+        topPadding=0,
+        showBoundary=0
+    )
+
+    page_template = PageTemplate(id="ThreeColumns", frames=[frame1, frame2, frame3])
     doc.addPageTemplates([page_template])
 
     styles = getSampleStyleSheet()
@@ -420,19 +526,65 @@ def build_newspaper_pdf(pdf_filename, story_content):
         "Article",
         parent=styles["Normal"],
         fontName="Times-Roman",
-        fontSize=10,
-        leading=12,
+        fontSize=9,  # Slightly smaller font for narrower columns
+        leading=11,
         alignment=4,  # Justify
-        firstLineIndent=20,
+        firstLineIndent=15,  # Slightly smaller indent for narrower columns
         spaceBefore=0,
         spaceAfter=8
+    )
+
+    # Quote section style
+    quote_section_style = ParagraphStyle(
+        "QuoteSection",
+        parent=styles["Normal"],
+        fontName="Times-Bold",
+        fontSize=14,
+        leading=16,
+        alignment=1,  # Center
+        textColor=colors.black,
+        spaceBefore=30,
+        spaceAfter=10
+    )
+
+    # Quote text style
+    quote_style = ParagraphStyle(
+        "Quote",
+        parent=styles["Normal"],
+        fontName="Times-Italic",
+        fontSize=14,  # Slightly smaller for three columns
+        leading=18,
+        alignment=1,  # Center
+        textColor=colors.black,
+        leftIndent=30,  # Adjusted indents for narrower columns
+        rightIndent=30,
+        spaceBefore=0,
+        spaceAfter=10
+    )
+
+    # Quote attribution style
+    attribution_style = ParagraphStyle(
+        "Attribution",
+        parent=styles["Normal"],
+        fontName="Times-Roman",
+        fontSize=12,
+        leading=14,
+        alignment=1,  # Center
+        textColor=colors.black,
+        spaceBefore=0,
+        spaceAfter=20
     )
 
     # Build flowables
     flowables = []
 
     # Add masthead (main title)
-    date_str = datetime.datetime.now().strftime("%d %B %Y")
+    try:
+        # Try using babel for proper French formatting
+        date_str = format_date(datetime.datetime.now(), format="EEEE d MMMM yyyy", locale='fr')
+    except:
+        # Fallback to basic formatting
+        date_str = datetime.datetime.now().strftime("%A %d %B %Y")
     flowables.append(Paragraph("Morning Press", masthead_style))
     flowables.append(Paragraph(date_str, subtitle_style))
 
@@ -445,8 +597,17 @@ def build_newspaper_pdf(pdf_filename, story_content):
             
         # Section headers (all caps with dashes)
         if text.isupper() and "-" in text:
-            flowables.append(Paragraph(text, section_header_style))
+            if text == "CITATION DU JOUR":
+                flowables.append(Paragraph(text, quote_section_style))
+            else:
+                flowables.append(Paragraph(text, section_header_style))
             current_section = text
+        # Quote content
+        elif current_section == "CITATION DU JOUR":
+            if text.startswith("❝"):
+                flowables.append(Paragraph(text, quote_style))
+            elif text.startswith("—"):
+                flowables.append(Paragraph(text, attribution_style))
         # Article titles (numbered items)
         elif text.strip().startswith(("1.", "2.", "3.", "4.", "5.")):
             title_text = text.split(". ", 1)[1] if ". " in text else text
@@ -540,6 +701,15 @@ def main():
                 content.append("")
                 content.append(item['content'])
             content.append("")  # Add spacing between articles
+    
+    # Add quote of the day
+    print("Fetching quote of the day...")
+    quote_data = fetch_random_quote(DEFAULT_LANGUAGE)
+    if quote_data:
+        content.append("CITATION DU JOUR")
+        content.append("-" * 40)
+        content.append(f"❝{quote_data['quote']}❞")
+        content.append(f"— {quote_data['author']}")
     
     # Generate PDF
     build_newspaper_pdf(pdf_filename, content)
