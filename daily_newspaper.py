@@ -163,6 +163,9 @@ try:
 except Exception as e:
     print(f"[WARN] Could not register emoji font: {e}")
 
+# Add to configuration section
+SECTION_SEPARATOR = "┄" * 50  # More elegant and better supported Unicode dots
+
 # ------------------------------------------------------
 # OPTIONAL: OPENAI SUMMARIZATION
 # ------------------------------------------------------
@@ -794,7 +797,7 @@ def main():
     
     if le_temps_news:
         content.append("LE TEMPS - TOP STORIES")
-        content.append("-" * 40)
+        content.append(SECTION_SEPARATOR)
         for idx, item in enumerate(le_temps_news, 1):
             content.append(f"{idx}. {item['title']}")
             if item.get('content'):
@@ -808,7 +811,7 @@ def main():
     
     if rts_news:
         content.append("RTS - TOP STORIES")
-        content.append("-" * 40)
+        content.append(SECTION_SEPARATOR)
         for idx, item in enumerate(rts_news, 1):
             content.append(f"{idx}. {item['title']}")
             if item.get('content'):
@@ -822,7 +825,7 @@ def main():
     
     if hn_news:
         content.append("HACKER NEWS - TOP STORIES")
-        content.append("-" * 40)
+        content.append(SECTION_SEPARATOR)
         for idx, item in enumerate(hn_news, 1):
             content.append(f"{idx}. {item['title']}")
             if item.get('content_summary'):
@@ -834,26 +837,26 @@ def main():
     print("Fetching quote of the day...")
     quote_data = fetch_random_quote(DEFAULT_LANGUAGE)
     if quote_data:
-        content.append("CITATION DU JOUR")
-        content.append("-" * 40)
-        content.append(f"❝{quote_data['quote']}❞")
+        content.append("CITATION DU JOUR - TOP QUOTES")
+        content.append(SECTION_SEPARATOR)
+        content.append(f"« {quote_data['quote']} »")  # French quotation marks
         content.append(f"— {quote_data['author']}")
     
     # Add daily boost
     print("Preparing daily boost...")
     boost_data = fetch_daily_boost(DEFAULT_LANGUAGE)
     if boost_data:
-        content.append("BOOST DU JOUR")
-        content.append("-" * 40)
-        content.append("💫 Affirmation du jour:")
+        content.append("BOOST DU JOUR - TOP MOTIVATION")
+        content.append(SECTION_SEPARATOR)
+        content.append("✧ Affirmation du jour:")  # Unicode star
         content.append(boost_data["affirmation"])
         content.append("")
         if boost_data.get("motivation"):
-            content.append("🌟 Pensée motivante:")
+            content.append("★ Pensée motivante:")  # Unicode filled star
             content.append(boost_data["motivation"])
             content.append("")
         if boost_data.get("goal"):
-            content.append("🎯 Intention du jour:")
+            content.append("⟡ Intention du jour:")  # Unicode diamond
             content.append(boost_data["goal"])
         content.append("")
     
