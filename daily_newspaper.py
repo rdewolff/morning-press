@@ -167,6 +167,7 @@ def fetch_hackernews_top_stories(limit=5, language=DEFAULT_LANGUAGE):
     """
     Fetch top stories from Hacker News and summarize their content.
     Returns a list of dictionaries with story details.
+    Only includes articles that were successfully fetched and summarized.
     """
     result = []
     try:
@@ -174,15 +175,22 @@ def fetch_hackernews_top_stories(limit=5, language=DEFAULT_LANGUAGE):
         r.raise_for_status()
         top_ids = r.json()
         
-        for story_id in top_ids[:limit]:
+        for story_id in top_ids:  # Remove limit here to process more if some fail
+            if len(result) >= limit:  # Check if we have enough successful articles
+                break
+                
             # Fetch story details
             story_url = f"https://hacker-news.firebaseio.com/v0/item/{story_id}.json"
             s = requests.get(story_url, timeout=10)
             s.raise_for_status()
             story_data = s.json()
             
-            title = story_data.get("title", "No Title")
+            title = story_data.get("title", "").strip()
             url = story_data.get("url") or f"https://news.ycombinator.com/item?id={story_id}"
+            
+            # Skip if no title
+            if not title:
+                continue
             
             # Fetch and analyze content if there's a URL
             content_summary = ""
@@ -218,17 +226,18 @@ def fetch_hackernews_top_stories(limit=5, language=DEFAULT_LANGUAGE):
                             text[:8000],
                             language=language
                         )
+                        # Only add to results if we got a summary
+                        if content_summary.strip():
+                            result.append({
+                                "title": title,
+                                "url": url,
+                                "content_summary": content_summary
+                            })
                     else:
                         print(f"[WARN] Article content too short or invalid for: {url}")
                         
                 except Exception as e:
                     print(f"[WARN] Could not fetch/process article content: {e}")
-            
-            result.append({
-                "title": title,
-                "url": url,
-                "content_summary": content_summary
-            })
             
     except Exception as e:
         print(f"[ERROR] Hacker News fetch error: {e}")
