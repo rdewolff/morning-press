@@ -165,8 +165,8 @@ def summarize_text_with_openai(text, max_tokens=SUMMARY_MAX_TOKENS, temperature=
 # ------------------------------------------------------
 def fetch_hackernews_top_stories(limit=5, language=DEFAULT_LANGUAGE):
     """
-    Fetch top stories from Hacker News, including content and top comments.
-    Returns a list of dictionaries with story details and analysis.
+    Fetch top stories from Hacker News and summarize their content.
+    Returns a list of dictionaries with story details.
     """
     result = []
     try:
@@ -188,43 +188,46 @@ def fetch_hackernews_top_stories(limit=5, language=DEFAULT_LANGUAGE):
             content_summary = ""
             if url and not url.startswith("https://news.ycombinator.com"):
                 try:
-                    article_response = requests.get(url, timeout=10)
-                    if article_response.status_code == 200:
+                    # Use a browser-like User-Agent
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
+                    article_response = requests.get(url, timeout=10, headers=headers)
+                    article_response.raise_for_status()
+                    
+                    # Use BeautifulSoup to extract article content
+                    soup = BeautifulSoup(article_response.text, 'html.parser')
+                    
+                    # Remove script and style elements
+                    for script in soup(["script", "style", "nav", "header", "footer", "aside"]):
+                        script.decompose()
+                    
+                    # Get text content
+                    text = soup.get_text()
+                    
+                    # Break into lines and remove leading/trailing space
+                    lines = (line.strip() for line in text.splitlines())
+                    # Break multi-headlines into a line each
+                    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+                    # Drop blank lines
+                    text = ' '.join(chunk for chunk in chunks if chunk)
+                    
+                    # Verify we have meaningful content
+                    if len(text) > 200:  # Minimum content length threshold
                         content_summary = summarize_text_with_openai(
-                            article_response.text[:8000],  # Increased from 4000
+                            text[:8000],
                             language=language
                         )
+                    else:
+                        print(f"[WARN] Article content too short or invalid for: {url}")
+                        
                 except Exception as e:
-                    print(f"[WARN] Could not fetch article content: {e}")
-            
-            # Fetch top comments
-            comments_analysis = ""
-            if story_data.get("kids"):
-                comments = []
-                for comment_id in story_data["kids"][:3]:  # Get top 3 comments
-                    try:
-                        comment_url = f"https://hacker-news.firebaseio.com/v0/item/{comment_id}.json"
-                        c = requests.get(comment_url, timeout=10)
-                        c.raise_for_status()
-                        comment_data = c.json()
-                        if comment_data.get("text"):
-                            comments.append(comment_data["text"])
-                    except Exception as e:
-                        print(f"[WARN] Could not fetch comment: {e}")
-                
-                if comments:
-                    comments_text = "\n".join(comments)
-                    comments_analysis = summarize_text_with_openai(
-                        f"Analyze these key points from the discussion comments. Be concise but insightful:\n\n{comments_text}",
-                        language=language,
-                        max_tokens=200  # Specific limit for comments analysis
-                    )
+                    print(f"[WARN] Could not fetch/process article content: {e}")
             
             result.append({
                 "title": title,
                 "url": url,
-                "content_summary": content_summary,
-                "comments_analysis": comments_analysis
+                "content_summary": content_summary
             })
             
     except Exception as e:
@@ -674,12 +677,7 @@ def main():
             content.append(f"{idx}. {item['title']}")
             if item.get('content_summary'):
                 content.append("")
-                content.append("Article Summary:")
                 content.append(item['content_summary'])
-            if item.get('comments_analysis'):
-                content.append("")
-                content.append("Discussion Analysis:")
-                content.append(item['comments_analysis'])
             content.append("")  # Add spacing between articles
     
     # Fetch and process RTS news
