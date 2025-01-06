@@ -122,6 +122,29 @@ FALLBACK_QUOTES = [
 # ZenQuotes API
 ZENQUOTES_API_URL = "https://zenquotes.io/api/random"
 
+# Add to the configuration section
+AFFIRMATIONS_CATEGORIES = [
+    "confidence",
+    "success",
+    "motivation",
+    "growth",
+    "happiness",
+    "health"
+]
+
+FALLBACK_AFFIRMATIONS = [
+    "Je suis capable de réaliser de grandes choses aujourd'hui.",
+    "Chaque jour, je deviens une meilleure version de moi-même.",
+    "Je choisis d'être confiant(e) et positif(ve).",
+    "Mes possibilités sont infinies.",
+    "Je mérite le succès et le bonheur.",
+    "Je transforme les défis en opportunités.",
+    "Ma détermination est plus forte que mes peurs.",
+    "Je suis reconnaissant(e) pour tout ce que j'ai.",
+    "Mon potentiel est illimité.",
+    "Je crée ma propre réalité positive."
+]
+
 # ------------------------------------------------------
 # OPTIONAL: OPENAI SUMMARIZATION
 # ------------------------------------------------------
@@ -425,6 +448,63 @@ def fetch_random_quote(language=DEFAULT_LANGUAGE):
         # Use fallback quotes if API fails
         return random.choice(FALLBACK_QUOTES)
 
+def fetch_daily_boost(language=DEFAULT_LANGUAGE):
+    """
+    Generate daily affirmations and motivation using AI.
+    Returns a dictionary with different types of motivational content.
+    """
+    boost_content = {
+        "affirmation": random.choice(FALLBACK_AFFIRMATIONS),
+        "motivation": "",
+        "goal": ""
+    }
+    
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        # Generate a motivational quote using AI
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{
+                "role": "system",
+                "content": f"""You are a wise philosopher and motivational speaker who creates impactful quotes in {language}.
+                Create a profound and original quote that feels timeless.
+                The quote should be inspiring and thought-provoking.
+                Include a fictional but plausible author name that sounds authentic.
+                Format: "quote" - Author Name"""
+            },
+            {
+                "role": "user",
+                "content": f"Create an original motivational quote about {random.choice(['success', 'perseverance', 'growth', 'wisdom', 'courage', 'creativity', 'happiness', 'inner peace'])}"
+            }],
+            temperature=0.9
+        )
+        boost_content["motivation"] = response.choices[0].message.content.strip()
+        
+        # Generate a personalized goal/intention
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{
+                "role": "system",
+                "content": f"""You are a life coach who creates personalized, actionable daily intentions in {language}.
+                Create a powerful, specific intention that inspires action.
+                Keep it short (1-2 sentences), positive, and impactful.
+                Make it feel personal and immediate."""
+            },
+            {
+                "role": "user",
+                "content": "Create a powerful daily intention that encourages personal growth and positive action."
+            }],
+            temperature=0.8
+        )
+        boost_content["goal"] = response.choices[0].message.content.strip()
+        
+    except Exception as e:
+        print(f"[WARN] Could not generate some motivation content: {e}")
+    
+    return boost_content
+
 # ------------------------------------------------------
 # PDF GENERATION
 # ------------------------------------------------------
@@ -725,6 +805,24 @@ def main():
         content.append("-" * 40)
         content.append(f"❝{quote_data['quote']}❞")
         content.append(f"— {quote_data['author']}")
+    
+    # Add daily boost
+    print("Preparing daily boost...")
+    boost_data = fetch_daily_boost(DEFAULT_LANGUAGE)
+    if boost_data:
+        content.append("BOOST DU JOUR")
+        content.append("-" * 40)
+        content.append("💫 Affirmation du jour:")
+        content.append(boost_data["affirmation"])
+        content.append("")
+        if boost_data.get("motivation"):
+            content.append("🌟 Pensée motivante:")
+            content.append(boost_data["motivation"])
+            content.append("")
+        if boost_data.get("goal"):
+            content.append("🎯 Intention du jour:")
+            content.append(boost_data["goal"])
+        content.append("")
     
     # Generate PDF
     build_newspaper_pdf(pdf_filename, content)
