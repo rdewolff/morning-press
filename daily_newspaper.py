@@ -755,18 +755,18 @@ def main():
     content.append(weather_info)
     content.append("")  # Add spacing
     
-    # Fetch and process Hacker News stories
-    print("Fetching Hacker News stories...")
-    hn_news = fetch_hackernews_top_stories(MAX_ITEMS, DEFAULT_LANGUAGE)
+    # Fetch and process Le Temps news
+    print("Fetching Le Temps news...")
+    le_temps_news = fetch_rss_headlines(LE_TEMPS_RSS, MAX_ITEMS, DEFAULT_LANGUAGE)
     
-    if hn_news:
-        content.append("HACKER NEWS - TOP STORIES")
+    if le_temps_news:
+        content.append("LE TEMPS - TOP STORIES")
         content.append("-" * 40)
-        for idx, item in enumerate(hn_news, 1):
+        for idx, item in enumerate(le_temps_news, 1):
             content.append(f"{idx}. {item['title']}")
-            if item.get('content_summary'):
+            if item.get('content'):
                 content.append("")
-                content.append(item['content_summary'])
+                content.append(item['content'])
             content.append("")  # Add spacing between articles
     
     # Fetch and process RTS news
@@ -783,18 +783,18 @@ def main():
                 content.append(item['content'])
             content.append("")  # Add spacing between articles
     
-    # Fetch and process Le Temps news
-    print("Fetching Le Temps news...")
-    le_temps_news = fetch_rss_headlines(LE_TEMPS_RSS, MAX_ITEMS, DEFAULT_LANGUAGE)
+    # Fetch and process Hacker News stories
+    print("Fetching Hacker News stories...")
+    hn_news = fetch_hackernews_top_stories(MAX_ITEMS, DEFAULT_LANGUAGE)
     
-    if le_temps_news:
-        content.append("LE TEMPS - TOP STORIES")
+    if hn_news:
+        content.append("HACKER NEWS - TOP STORIES")
         content.append("-" * 40)
-        for idx, item in enumerate(le_temps_news, 1):
+        for idx, item in enumerate(hn_news, 1):
             content.append(f"{idx}. {item['title']}")
-            if item.get('content'):
+            if item.get('content_summary'):
                 content.append("")
-                content.append(item['content'])
+                content.append(item['content_summary'])
             content.append("")  # Add spacing between articles
     
     # Add quote of the day
