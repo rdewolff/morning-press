@@ -30,6 +30,8 @@ from bs4 import BeautifulSoup
 import html2text
 from babel.dates import format_date
 import locale
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -144,6 +146,22 @@ FALLBACK_AFFIRMATIONS = [
     "Mon potentiel est illimité.",
     "Je crée ma propre réalité positive."
 ]
+
+# Register emoji font if available
+try:
+    # Try different possible paths for the Noto Color Emoji font
+    emoji_font_paths = [
+        "/System/Library/Fonts/Apple Color Emoji.ttc",  # macOS
+        "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",  # Linux
+        "C:/Windows/Fonts/seguiemj.ttf",  # Windows
+    ]
+    
+    for font_path in emoji_font_paths:
+        if os.path.exists(font_path):
+            pdfmetrics.registerFont(TTFont('EmojiFont', font_path))
+            break
+except Exception as e:
+    print(f"[WARN] Could not register emoji font: {e}")
 
 # ------------------------------------------------------
 # OPTIONAL: OPENAI SUMMARIZATION
@@ -675,6 +693,17 @@ def build_newspaper_pdf(pdf_filename, story_content):
         spaceAfter=20
     )
 
+    # Add after other style definitions:
+    emoji_style = ParagraphStyle(
+        "EmojiText",
+        parent=styles["Normal"],
+        fontName="EmojiFont",  # Use the emoji font
+        fontSize=12,
+        leading=14,
+        alignment=0,  # Left
+        textColor=colors.black
+    )
+
     # Build flowables
     flowables = []
 
@@ -695,6 +724,10 @@ def build_newspaper_pdf(pdf_filename, story_content):
         if not text.strip():
             continue
             
+        # Use emoji font for lines containing emojis
+        has_emoji = any(ord(char) > 0x1F300 for char in text)
+        style_to_use = emoji_style if has_emoji else article_style
+            
         # Section headers (all caps with dashes)
         if text.isupper() and "-" in text:
             if text == "CITATION DU JOUR":
@@ -714,7 +747,7 @@ def build_newspaper_pdf(pdf_filename, story_content):
             flowables.append(Paragraph(title_text, article_title_style))
         # Regular content
         else:
-            flowables.append(Paragraph(text, article_style))
+            flowables.append(Paragraph(text, style_to_use))
 
     # Build the PDF
     doc.build(flowables)
