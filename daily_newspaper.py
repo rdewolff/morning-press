@@ -529,197 +529,235 @@ def fetch_daily_boost(language=DEFAULT_LANGUAGE):
 # ------------------------------------------------------
 # PDF GENERATION
 # ------------------------------------------------------
+def calculate_content_size(doc, content, styles):
+    """
+    Calculate the approximate size of content with current styles.
+    Returns the number of pages it would take.
+    """
+    from reportlab.platypus.doctemplate import FrameBreak, PageBreak
+    from reportlab.platypus.paragraph import Paragraph
+    
+    # Create a temporary document to measure content
+    class SizeDocTemplate(BaseDocTemplate):
+        def __init__(self):
+            super().__init__("size_test.pdf", pagesize=A4)
+            self.page_count = 0
+            
+        def handle_pageBegin(self):
+            self.page_count += 1
+            super().handle_pageBegin()
+    
+    doc_test = SizeDocTemplate()
+    doc_test.addPageTemplates(doc.pageTemplates)
+    
+    # Build flowables with current styles
+    flowables = []
+    current_section = None
+    
+    for text in content:
+        if not text.strip():
+            continue
+            
+        has_emoji = any(ord(char) > 0x1F300 for char in text)
+        style_to_use = styles["emoji_style"] if has_emoji else styles["article_style"]
+            
+        if text.isupper() and "-" in text:
+            if text == "CITATION DU JOUR":
+                flowables.append(Paragraph(text, styles["quote_section_style"]))
+            else:
+                flowables.append(Paragraph(text, styles["section_header_style"]))
+            current_section = text
+        elif current_section == "CITATION DU JOUR":
+            if text.startswith("❝"):
+                flowables.append(Paragraph(text, styles["quote_style"]))
+            elif text.startswith("—"):
+                flowables.append(Paragraph(text, styles["attribution_style"]))
+        elif text.strip().startswith(("1.", "2.", "3.", "4.", "5.")):
+            title_text = text.split(". ", 1)[1] if ". " in text else text
+            flowables.append(Paragraph(title_text, styles["article_title_style"]))
+        else:
+            flowables.append(Paragraph(text, style_to_use))
+    
+    # Build document to count pages
+    doc_test.build(flowables)
+    return doc_test.page_count
+
 def build_newspaper_pdf(pdf_filename, story_content):
     """
     Generate a multi-column PDF (A4) with an old-school newspaper style.
-    :param pdf_filename: The name/path of the output PDF file.
-    :param story_content: List of paragraphs (strings) to place into the PDF.
+    Dynamically adjusts font sizes to fit content within 2 pages.
     """
     page_width, page_height = A4
-
+    
+    # Convert 5mm to points (reportlab uses points)
+    margin = 0.5 * cm  # 5mm = 0.5cm
+    
     doc = BaseDocTemplate(
         pdf_filename,
         pagesize=A4,
-        leftMargin=1 * cm,
-        rightMargin=1 * cm,
-        topMargin=1.5 * cm,  # Increased top margin for header
-        bottomMargin=1 * cm,
+        leftMargin=margin,
+        rightMargin=margin,
+        topMargin=margin,
+        bottomMargin=margin,
     )
-
-    gutter = 0.5 * cm
-    column_width = (page_width - 2 * doc.leftMargin - 2 * gutter) / 3  # Adjusted for 3 columns
-
-    # Define three columns (Frames)
-    frame1 = Frame(
-        doc.leftMargin,
-        doc.bottomMargin,
-        column_width,
-        page_height - doc.topMargin - doc.bottomMargin,
-        leftPadding=0,
-        bottomPadding=0,
-        rightPadding=0,
-        topPadding=0,
-        showBoundary=0
-    )
-
-    frame2 = Frame(
-        doc.leftMargin + column_width + gutter,
-        doc.bottomMargin,
-        column_width,
-        page_height - doc.topMargin - doc.bottomMargin,
-        leftPadding=0,
-        bottomPadding=0,
-        rightPadding=0,
-        topPadding=0,
-        showBoundary=0
-    )
-
-    frame3 = Frame(
-        doc.leftMargin + 2 * (column_width + gutter),
-        doc.bottomMargin,
-        column_width,
-        page_height - doc.topMargin - doc.bottomMargin,
-        leftPadding=0,
-        bottomPadding=0,
-        rightPadding=0,
-        topPadding=0,
-        showBoundary=0
-    )
-
-    page_template = PageTemplate(id="ThreeColumns", frames=[frame1, frame2, frame3])
+    
+    gutter = 0.3 * cm  # Reduced gutter to match smaller margins
+    column_width = (page_width - 2 * margin - 2 * gutter) / 3
+    
+    # Define frames
+    frames = [
+        Frame(
+            doc.leftMargin + i * (column_width + gutter),
+            doc.bottomMargin,
+            column_width,
+            page_height - doc.topMargin - doc.bottomMargin,
+            leftPadding=0,
+            bottomPadding=0,
+            rightPadding=0,
+            topPadding=0,
+            showBoundary=0
+        )
+        for i in range(3)
+    ]
+    
+    page_template = PageTemplate(id="ThreeColumns", frames=frames)
     doc.addPageTemplates([page_template])
-
+    
     styles = getSampleStyleSheet()
-
-    # Main newspaper title style
-    masthead_style = ParagraphStyle(
-        "Masthead",
-        parent=styles["Title"],
-        fontName="Times-Bold",
-        fontSize=32,
-        leading=36,
-        alignment=1,  # Center
-        textColor=colors.black,
-        spaceAfter=6
-    )
-
-    # Date and weather style (subtitle)
-    subtitle_style = ParagraphStyle(
-        "Subtitle",
-        parent=styles["Normal"],
-        fontName="Times-Italic",
-        fontSize=12,
-        leading=14,
-        alignment=1,  # Center
-        textColor=colors.black,
-        spaceBefore=0,
-        spaceAfter=20
-    )
-
-    # Section headers (e.g., "HACKER NEWS - TOP STORIES")
-    section_header_style = ParagraphStyle(
-        "SectionHeader",
-        parent=styles["Heading1"],
-        fontName="Times-Bold",
-        fontSize=16,
-        leading=20,
-        alignment=0,  # Left
-        textColor=colors.black,
-        spaceBefore=15,
-        spaceAfter=10
-    )
-
-    # Article titles
-    article_title_style = ParagraphStyle(
-        "ArticleTitle",
-        parent=styles["Heading2"],
-        fontName="Times-Bold",
-        fontSize=12,
-        leading=14,
-        alignment=0,  # Left
-        textColor=colors.black,
-        spaceBefore=10,
-        spaceAfter=6
-    )
-
-    # Regular article text
-    article_style = ParagraphStyle(
-        "Article",
-        parent=styles["Normal"],
-        fontName="Times-Roman",
-        fontSize=9,  # Slightly smaller font for narrower columns
-        leading=11,
-        alignment=4,  # Justify
-        firstLineIndent=15,  # Slightly smaller indent for narrower columns
-        spaceBefore=0,
-        spaceAfter=8
-    )
-
-    # Quote section style
-    quote_section_style = ParagraphStyle(
-        "QuoteSection",
-        parent=styles["Normal"],
-        fontName="Times-Bold",
-        fontSize=14,
-        leading=16,
-        alignment=1,  # Center
-        textColor=colors.black,
-        spaceBefore=30,
-        spaceAfter=10
-    )
-
-    # Quote text style
-    quote_style = ParagraphStyle(
-        "Quote",
-        parent=styles["Normal"],
-        fontName="Times-Italic",
-        fontSize=14,  # Slightly smaller for three columns
-        leading=18,
-        alignment=1,  # Center
-        textColor=colors.black,
-        leftIndent=30,  # Adjusted indents for narrower columns
-        rightIndent=30,
-        spaceBefore=0,
-        spaceAfter=10
-    )
-
-    # Quote attribution style
-    attribution_style = ParagraphStyle(
-        "Attribution",
-        parent=styles["Normal"],
-        fontName="Times-Roman",
-        fontSize=12,
-        leading=14,
-        alignment=1,  # Center
-        textColor=colors.black,
-        spaceBefore=0,
-        spaceAfter=20
-    )
-
-    # Add after other style definitions:
-    emoji_style = ParagraphStyle(
-        "EmojiText",
-        parent=styles["Normal"],
-        fontName="EmojiFont",  # Use the emoji font
-        fontSize=12,
-        leading=14,
-        alignment=0,  # Left
-        textColor=colors.black
-    )
-
-    # Build flowables
+    
+    # Define initial styles with default sizes
+    style_definitions = {
+        "masthead_style": ParagraphStyle(
+            "Masthead",
+            parent=styles["Title"],
+            fontName="Times-Bold",
+            fontSize=32,
+            leading=36,
+            alignment=1,
+            textColor=colors.black,
+            spaceAfter=6
+        ),
+        "subtitle_style": ParagraphStyle(
+            "Subtitle",
+            parent=styles["Normal"],
+            fontName="Times-Italic",
+            fontSize=12,
+            leading=14,
+            alignment=1,
+            textColor=colors.black,
+            spaceBefore=0,
+            spaceAfter=20
+        ),
+        "section_header_style": ParagraphStyle(
+            "SectionHeader",
+            parent=styles["Heading1"],
+            fontName="Times-Bold",
+            fontSize=16,
+            leading=20,
+            alignment=0,
+            textColor=colors.black,
+            spaceBefore=15,
+            spaceAfter=10
+        ),
+        "article_title_style": ParagraphStyle(
+            "ArticleTitle",
+            parent=styles["Heading2"],
+            fontName="Times-Bold",
+            fontSize=12,
+            leading=14,
+            alignment=0,
+            textColor=colors.black,
+            spaceBefore=10,
+            spaceAfter=6
+        ),
+        "article_style": ParagraphStyle(
+            "Article",
+            parent=styles["Normal"],
+            fontName="Times-Roman",
+            fontSize=9,
+            leading=11,
+            alignment=4,
+            firstLineIndent=15,
+            spaceBefore=0,
+            spaceAfter=8
+        ),
+        "quote_section_style": ParagraphStyle(
+            "QuoteSection",
+            parent=styles["Normal"],
+            fontName="Times-Bold",
+            fontSize=14,
+            leading=16,
+            alignment=1,
+            textColor=colors.black,
+            spaceBefore=30,
+            spaceAfter=10
+        ),
+        "quote_style": ParagraphStyle(
+            "Quote",
+            parent=styles["Normal"],
+            fontName="Times-Italic",
+            fontSize=14,
+            leading=18,
+            alignment=1,
+            textColor=colors.black,
+            leftIndent=30,
+            rightIndent=30,
+            spaceBefore=0,
+            spaceAfter=10
+        ),
+        "attribution_style": ParagraphStyle(
+            "Attribution",
+            parent=styles["Normal"],
+            fontName="Times-Roman",
+            fontSize=12,
+            leading=14,
+            alignment=1,
+            textColor=colors.black,
+            spaceBefore=0,
+            spaceAfter=20
+        ),
+        "emoji_style": ParagraphStyle(
+            "EmojiText",
+            parent=styles["Normal"],
+            fontName="EmojiFont",
+            fontSize=12,
+            leading=14,
+            alignment=0,
+            textColor=colors.black
+        )
+    }
+    
+    # Calculate initial content size
+    num_pages = calculate_content_size(doc, story_content, style_definitions)
+    
+    # If content exceeds 2 pages, adjust font sizes
+    if num_pages > 2:
+        scale_factor = 2 / num_pages  # Target 2 pages
+        
+        # Adjust font sizes and leading proportionally
+        for style in style_definitions.values():
+            style.fontSize = max(6, int(style.fontSize * scale_factor))  # Minimum 6pt font
+            style.leading = max(8, int(style.leading * scale_factor))   # Minimum 8pt leading
+            
+            # Adjust spacing proportionally
+            if hasattr(style, 'spaceBefore'):
+                style.spaceBefore = int(style.spaceBefore * scale_factor)
+            if hasattr(style, 'spaceAfter'):
+                style.spaceAfter = int(style.spaceAfter * scale_factor)
+            if hasattr(style, 'firstLineIndent'):
+                style.firstLineIndent = int(style.firstLineIndent * scale_factor)
+    
+    # Build flowables with adjusted styles
     flowables = []
-
-    # Add masthead (main title)
+    
+    # Add masthead
     try:
-        # Try using babel for proper French formatting
         date_str = format_date(datetime.datetime.now(), format="EEEE d MMMM yyyy", locale='fr')
     except:
-        # Fallback to basic formatting
         date_str = datetime.datetime.now().strftime("%A %d %B %Y")
-    flowables.append(Paragraph("Morning Press", masthead_style))
-    flowables.append(Paragraph(date_str, subtitle_style))
-
+    flowables.append(Paragraph("Morning Press", style_definitions["masthead_style"]))
+    flowables.append(Paragraph(date_str, style_definitions["subtitle_style"]))
+    
     # Process content with appropriate styles
     current_section = None
     
@@ -727,31 +765,26 @@ def build_newspaper_pdf(pdf_filename, story_content):
         if not text.strip():
             continue
             
-        # Use emoji font for lines containing emojis
         has_emoji = any(ord(char) > 0x1F300 for char in text)
-        style_to_use = emoji_style if has_emoji else article_style
+        style_to_use = style_definitions["emoji_style"] if has_emoji else style_definitions["article_style"]
             
-        # Section headers (all caps with dashes)
         if text.isupper() and "-" in text:
             if text == "CITATION DU JOUR":
-                flowables.append(Paragraph(text, quote_section_style))
+                flowables.append(Paragraph(text, style_definitions["quote_section_style"]))
             else:
-                flowables.append(Paragraph(text, section_header_style))
+                flowables.append(Paragraph(text, style_definitions["section_header_style"]))
             current_section = text
-        # Quote content
         elif current_section == "CITATION DU JOUR":
             if text.startswith("❝"):
-                flowables.append(Paragraph(text, quote_style))
+                flowables.append(Paragraph(text, style_definitions["quote_style"]))
             elif text.startswith("—"):
-                flowables.append(Paragraph(text, attribution_style))
-        # Article titles (numbered items)
+                flowables.append(Paragraph(text, style_definitions["attribution_style"]))
         elif text.strip().startswith(("1.", "2.", "3.", "4.", "5.")):
             title_text = text.split(". ", 1)[1] if ". " in text else text
-            flowables.append(Paragraph(title_text, article_title_style))
-        # Regular content
+            flowables.append(Paragraph(title_text, style_definitions["article_title_style"]))
         else:
             flowables.append(Paragraph(text, style_to_use))
-
+    
     # Build the PDF
     doc.build(flowables)
 
