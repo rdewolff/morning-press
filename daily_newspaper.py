@@ -11,6 +11,9 @@ import sys
 import subprocess
 import datetime
 import random
+import json
+import pickle
+from pathlib import Path
 
 import feedparser
 import requests
@@ -165,6 +168,43 @@ except Exception as e:
 
 # Add to configuration section
 SECTION_SEPARATOR = "┄" * 50  # More elegant and better supported Unicode dots
+
+# Add to configuration section
+CACHE_DIR = "cache"
+CACHE_FILE = "news_cache.pkl"
+
+def save_to_cache(content):
+    """Save content to cache file."""
+    cache_path = Path(CACHE_DIR)
+    cache_path.mkdir(exist_ok=True)
+    
+    cache_file = cache_path / CACHE_FILE
+    with open(cache_file, 'wb') as f:
+        pickle.dump({
+            'timestamp': datetime.datetime.now(),
+            'content': content
+        }, f)
+
+def load_from_cache():
+    """Load content from cache file if it exists and is from today."""
+    cache_path = Path(CACHE_DIR) / CACHE_FILE
+    if not cache_path.exists():
+        return None
+        
+    try:
+        with open(cache_path, 'rb') as f:
+            cache_data = pickle.load(f)
+            
+        # Check if cache is from today
+        cache_date = cache_data['timestamp'].date()
+        today = datetime.datetime.now().date()
+        
+        if cache_date == today:
+            return cache_data['content']
+    except Exception as e:
+        print(f"[WARN] Could not load cache: {e}")
+    
+    return None
 
 # ------------------------------------------------------
 # OPTIONAL: OPENAI SUMMARIZATION
@@ -807,8 +847,11 @@ def print_pdf(pdf_filename, printer_name=""):
 # ------------------------------------------------------
 # MAIN
 # ------------------------------------------------------
-def main():
-    """Main function to generate the morning press."""
+def main(use_cache=False):
+    """
+    Main function to generate the morning press.
+    :param use_cache: If True, use cached content if available
+    """
     # Create press directory if it doesn't exist
     os.makedirs("press", exist_ok=True)
 
@@ -816,82 +859,93 @@ def main():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     pdf_filename = f"press/{PDF_PREFIX}_{timestamp}.pdf"
 
-    # Prepare content
-    content = []
+    # Try to load from cache if use_cache is True
+    content = None
+    if use_cache:
+        content = load_from_cache()
+        if content:
+            print("Using cached content...")
     
-    # Add weather
-    weather_info = fetch_weather(WEATHER_URL)
-    content.append(weather_info)
-    content.append("")  # Add spacing
-    
-    # Fetch and process Le Temps news
-    print("Fetching Le Temps news...")
-    le_temps_news = fetch_rss_headlines(LE_TEMPS_RSS, MAX_ITEMS, DEFAULT_LANGUAGE)
-    
-    if le_temps_news:
-        content.append("LE TEMPS - TOP STORIES")
-        content.append(SECTION_SEPARATOR)
-        for idx, item in enumerate(le_temps_news, 1):
-            content.append(f"{idx}. {item['title']}")
-            if item.get('content'):
+    # If no cache or cache disabled, fetch fresh content
+    if content is None:
+        content = []
+        
+        # Add weather
+        weather_info = fetch_weather(WEATHER_URL)
+        content.append(weather_info)
+        content.append("")  # Add spacing
+        
+        # Fetch and process Le Temps news
+        print("Fetching Le Temps news...")
+        le_temps_news = fetch_rss_headlines(LE_TEMPS_RSS, MAX_ITEMS, DEFAULT_LANGUAGE)
+        
+        if le_temps_news:
+            content.append("LE TEMPS - TOP STORIES")
+            content.append(SECTION_SEPARATOR)
+            for idx, item in enumerate(le_temps_news, 1):
+                content.append(f"{idx}. {item['title']}")
+                if item.get('content'):
+                    content.append("")
+                    content.append(item['content'])
                 content.append("")
-                content.append(item['content'])
-            content.append("")  # Add spacing between articles
-    
-    # Fetch and process RTS news
-    print("Fetching RTS news...")
-    rts_news = fetch_rts_news(MAX_ITEMS, DEFAULT_LANGUAGE)
-    
-    if rts_news:
-        content.append("RTS - TOP STORIES")
-        content.append(SECTION_SEPARATOR)
-        for idx, item in enumerate(rts_news, 1):
-            content.append(f"{idx}. {item['title']}")
-            if item.get('content'):
+        
+        # Fetch and process RTS news
+        print("Fetching RTS news...")
+        rts_news = fetch_rts_news(MAX_ITEMS, DEFAULT_LANGUAGE)
+        
+        if rts_news:
+            content.append("RTS - TOP STORIES")
+            content.append(SECTION_SEPARATOR)
+            for idx, item in enumerate(rts_news, 1):
+                content.append(f"{idx}. {item['title']}")
+                if item.get('content'):
+                    content.append("")
+                    content.append(item['content'])
                 content.append("")
-                content.append(item['content'])
-            content.append("")  # Add spacing between articles
-    
-    # Fetch and process Hacker News stories
-    print("Fetching Hacker News stories...")
-    hn_news = fetch_hackernews_top_stories(MAX_ITEMS, DEFAULT_LANGUAGE)
-    
-    if hn_news:
-        content.append("HACKER NEWS - TOP STORIES")
-        content.append(SECTION_SEPARATOR)
-        for idx, item in enumerate(hn_news, 1):
-            content.append(f"{idx}. {item['title']}")
-            if item.get('content_summary'):
+        
+        # Fetch and process Hacker News stories
+        print("Fetching Hacker News stories...")
+        hn_news = fetch_hackernews_top_stories(MAX_ITEMS, DEFAULT_LANGUAGE)
+        
+        if hn_news:
+            content.append("HACKER NEWS - TOP STORIES")
+            content.append(SECTION_SEPARATOR)
+            for idx, item in enumerate(hn_news, 1):
+                content.append(f"{idx}. {item['title']}")
+                if item.get('content_summary'):
+                    content.append("")
+                    content.append(item['content_summary'])
                 content.append("")
-                content.append(item['content_summary'])
-            content.append("")  # Add spacing between articles
-    
-    # Add quote of the day
-    print("Fetching quote of the day...")
-    quote_data = fetch_random_quote(DEFAULT_LANGUAGE)
-    if quote_data:
-        content.append("CITATION DU JOUR - TOP QUOTES")
-        content.append(SECTION_SEPARATOR)
-        content.append(f"« {quote_data['quote']} »")  # French quotation marks
-        content.append(f"— {quote_data['author']}")
-    
-    # Add daily boost
-    print("Preparing daily boost...")
-    boost_data = fetch_daily_boost(DEFAULT_LANGUAGE)
-    if boost_data:
-        content.append("BOOST DU JOUR - TOP MOTIVATION")
-        content.append(SECTION_SEPARATOR)
-        content.append("✧ Affirmation du jour:")  # Unicode star
-        content.append(boost_data["affirmation"])
-        content.append("")
-        if boost_data.get("motivation"):
-            content.append("★ Pensée motivante:")  # Unicode filled star
-            content.append(boost_data["motivation"])
+        
+        # Add quote of the day
+        print("Fetching quote of the day...")
+        quote_data = fetch_random_quote(DEFAULT_LANGUAGE)
+        if quote_data:
+            content.append("CITATION DU JOUR - TOP QUOTES")
+            content.append(SECTION_SEPARATOR)
+            content.append(f"« {quote_data['quote']} »")
+            content.append(f"— {quote_data['author']}")
+        
+        # Add daily boost
+        print("Preparing daily boost...")
+        boost_data = fetch_daily_boost(DEFAULT_LANGUAGE)
+        if boost_data:
+            content.append("BOOST DU JOUR - TOP MOTIVATION")
+            content.append(SECTION_SEPARATOR)
+            content.append("✧ Affirmation du jour:")
+            content.append(boost_data["affirmation"])
             content.append("")
-        if boost_data.get("goal"):
-            content.append("⟡ Intention du jour:")  # Unicode diamond
-            content.append(boost_data["goal"])
-        content.append("")
+            if boost_data.get("motivation"):
+                content.append("★ Pensée motivante:")
+                content.append(boost_data["motivation"])
+                content.append("")
+            if boost_data.get("goal"):
+                content.append("⟡ Intention du jour:")
+                content.append(boost_data["goal"])
+            content.append("")
+        
+        # Save to cache for future use
+        save_to_cache(content)
     
     # Generate PDF
     build_newspaper_pdf(pdf_filename, content)
@@ -904,4 +958,6 @@ def main():
 
 # ------------------------------------------------------
 if __name__ == "__main__":
-    main()
+    # Check if --use-cache flag is provided
+    use_cache = "--use-cache" in sys.argv
+    main(use_cache)
