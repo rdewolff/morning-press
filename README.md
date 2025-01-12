@@ -63,29 +63,28 @@ PRINTER_NAME = "YOUR_PRINTER_NAME"  # Leave empty for default printer
 
 ## Usage
 
-Run the application using Poetry:
+Run the script with optional parameters:
 ```bash
-# Basic usage - generates PDF only
-poetry run python daily_newspaper.py
-
-# Use cached content (faster, good for testing layout)
-poetry run python daily_newspaper.py --use-cache
-
-# Auto-print to default printer
-poetry run python daily_newspaper.py --print
-
-# Specify number of articles per source
-poetry run python daily_newspaper.py --articles 3
-
-# Combine multiple options
-poetry run python daily_newspaper.py --use-cache --print --articles 3
+poetry run python daily_newspaper.py [options]
 ```
 
-### Command Line Options
+Available options:
+- `--use-cache`: Use cached content if available
+- `--print`: Automatically print the generated PDF
+- `--articles N`: Number of articles to fetch per source (default: 5)
+- `--pages N`: Number of pages to generate (default: 2)
 
-- `--use-cache`: Use cached content instead of fetching new data (useful for testing layout changes)
-- `--print`: Automatically print to default printer after generation
-- `--articles N`: Fetch N articles per source (default is 5)
+Examples:
+```bash
+# Generate with default settings (2 pages, 5 articles per source)
+poetry run python daily_newspaper.py
+
+# Generate a 3-page newspaper with 7 articles per source
+poetry run python daily_newspaper.py --pages 3 --articles 7
+
+# Use cached content and print automatically
+poetry run python daily_newspaper.py --use-cache --print
+```
 
 The application will:
 1. Fetch news from all sources (or use cache if specified)

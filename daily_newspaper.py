@@ -622,10 +622,13 @@ def calculate_content_size(doc, content, styles):
     doc_test.build(flowables)
     return doc_test.page_count
 
-def build_newspaper_pdf(pdf_filename, story_content):
+def build_newspaper_pdf(pdf_filename, story_content, target_pages=2):
     """
     Generate a multi-column PDF (A4) with an old-school newspaper style.
-    Dynamically adjusts font sizes to fit content within 2 pages.
+    Dynamically adjusts font sizes to fit content within the specified number of pages.
+    :param pdf_filename: Output PDF file path
+    :param story_content: Content to write
+    :param target_pages: Number of pages to target (default: 2)
     """
     page_width, page_height = A4
     
@@ -706,12 +709,14 @@ def build_newspaper_pdf(pdf_filename, story_content):
             "ArticleTitle",
             parent=styles["Heading2"],
             fontName="Times-Bold",
-            fontSize=12,
-            leading=14,
+            fontSize=14,
+            leading=16,
             alignment=0,
             textColor=colors.black,
-            spaceBefore=10,
-            spaceAfter=6
+            spaceBefore=12,
+            spaceAfter=8,
+            leftIndent=10,
+            rightIndent=10,
         ),
         "article_style": ParagraphStyle(
             "Article",
@@ -776,8 +781,7 @@ def build_newspaper_pdf(pdf_filename, story_content):
     # Calculate initial content size
     num_pages = calculate_content_size(doc, story_content, style_definitions)
     
-    # If content exceeds 2 pages or is too short, adjust font sizes
-    target_pages = 2
+    # If content exceeds target_pages or is too short, adjust font sizes
     if num_pages != target_pages:
         scale_factor = target_pages / num_pages
         
@@ -835,13 +839,12 @@ def build_newspaper_pdf(pdf_filename, story_content):
                 flowables.append(Paragraph(text, style_definitions["section_header_style"]))
             current_section = text
         elif current_section == "CITATION DU JOUR":
-            if text.startswith("❝"):
+            if text.startswith("❝") or text.startswith("«"):
                 flowables.append(Paragraph(text, style_definitions["quote_style"]))
-            elif text.startswith("—"):
+            elif text.startswith("—") or text.startswith("-"):
                 flowables.append(Paragraph(text, style_definitions["attribution_style"]))
-        elif text.strip().startswith(("1.", "2.", "3.", "4.", "5.")):
-            title_text = text.split(". ", 1)[1] if ". " in text else text
-            flowables.append(Paragraph(title_text, style_definitions["article_title_style"]))
+        elif text.strip().split('.')[0].isdigit():  # Check if starts with any number followed by a period
+            flowables.append(Paragraph(text, style_definitions["article_title_style"]))
         else:
             flowables.append(Paragraph(text, style_to_use))
     
@@ -867,12 +870,13 @@ def print_pdf(pdf_filename, printer_name=""):
 # ------------------------------------------------------
 # MAIN
 # ------------------------------------------------------
-def main(use_cache=False, auto_print=False, articles_per_source=None):
+def main(use_cache=False, auto_print=False, articles_per_source=None, target_pages=2):
     """
     Main function to generate the morning press.
     :param use_cache: If True, use cached content if available
     :param auto_print: If True, automatically print to default printer
     :param articles_per_source: Number of articles to fetch per source (overrides MAX_ITEMS)
+    :param target_pages: Number of pages to generate (default: 2)
     """
     # Create press directory if it doesn't exist
     os.makedirs("press", exist_ok=True)
@@ -908,7 +912,7 @@ def main(use_cache=False, auto_print=False, articles_per_source=None):
             content.append("LE TEMPS - TOP STORIES")
             content.append(SECTION_SEPARATOR)
             for idx, item in enumerate(le_temps_news, 1):
-                content.append(f"{idx}. {item['title']}")
+                content.append(f"{idx}. {item['title']}")  # Keep the number with the title
                 if item.get('content'):
                     content.append("")
                     content.append(item['content'])
@@ -973,7 +977,7 @@ def main(use_cache=False, auto_print=False, articles_per_source=None):
         save_to_cache(content)
     
     # Generate PDF
-    build_newspaper_pdf(pdf_filename, content)
+    build_newspaper_pdf(pdf_filename, content, target_pages)
     
     # Print if auto_print is True or printer name is configured
     if auto_print or PRINTER_NAME:
@@ -989,6 +993,8 @@ if __name__ == "__main__":
     
     # Parse number of articles if provided
     articles_per_source = None
+    target_pages = 2  # Default value
+    
     for i, arg in enumerate(sys.argv):
         if arg == "--articles":
             try:
@@ -996,5 +1002,14 @@ if __name__ == "__main__":
             except (IndexError, ValueError):
                 print("[ERROR] --articles requires a number value")
                 sys.exit(1)
+        elif arg == "--pages":
+            try:
+                target_pages = int(sys.argv[i + 1])
+                if target_pages < 1:
+                    print("[ERROR] --pages must be at least 1")
+                    sys.exit(1)
+            except (IndexError, ValueError):
+                print("[ERROR] --pages requires a number value")
+                sys.exit(1)
     
-    main(use_cache, auto_print, articles_per_source)
+    main(use_cache, auto_print, articles_per_source, target_pages)
