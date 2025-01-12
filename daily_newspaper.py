@@ -167,7 +167,7 @@ except Exception as e:
     print(f"[WARN] Could not register emoji font: {e}")
 
 # Add to configuration section
-SECTION_SEPARATOR = "┄" * 50  # More elegant and better supported Unicode dots
+SECTION_SEPARATOR = "*" * 20
 
 # Add to configuration section
 CACHE_DIR = "cache"
@@ -692,12 +692,15 @@ def build_newspaper_pdf(pdf_filename, story_content):
             "SectionHeader",
             parent=styles["Heading1"],
             fontName="Times-Bold",
-            fontSize=16,
-            leading=20,
+            fontSize=18,  # Increased base size
+            leading=22,   # Increased leading
             alignment=0,
             textColor=colors.black,
-            spaceBefore=15,
-            spaceAfter=10
+            spaceBefore=20,
+            spaceAfter=12,
+            borderWidth=1,  # Add border
+            borderColor=colors.black,
+            borderPadding=5,
         ),
         "article_title_style": ParagraphStyle(
             "ArticleTitle",
@@ -723,14 +726,17 @@ def build_newspaper_pdf(pdf_filename, story_content):
         ),
         "quote_section_style": ParagraphStyle(
             "QuoteSection",
-            parent=styles["Normal"],
+            parent=styles["Heading1"],
             fontName="Times-Bold",
-            fontSize=14,
-            leading=16,
+            fontSize=18,  # Match section_header_style
+            leading=22,   # Match section_header_style
             alignment=1,
             textColor=colors.black,
-            spaceBefore=30,
-            spaceAfter=10
+            spaceBefore=20,
+            spaceAfter=12,
+            borderWidth=1,  # Add border
+            borderColor=colors.black,
+            borderPadding=5,
         ),
         "quote_style": ParagraphStyle(
             "Quote",
@@ -770,22 +776,36 @@ def build_newspaper_pdf(pdf_filename, story_content):
     # Calculate initial content size
     num_pages = calculate_content_size(doc, story_content, style_definitions)
     
-    # If content exceeds 2 pages, adjust font sizes
-    if num_pages > 2:
-        scale_factor = 2 / num_pages  # Target 2 pages
+    # If content exceeds 2 pages or is too short, adjust font sizes
+    target_pages = 2
+    if num_pages != target_pages:
+        scale_factor = target_pages / num_pages
         
-        # Adjust font sizes and leading proportionally
-        for style in style_definitions.values():
-            style.fontSize = max(6, int(style.fontSize * scale_factor))  # Minimum 6pt font
-            style.leading = max(8, int(style.leading * scale_factor))   # Minimum 8pt leading
+        # Limit the scaling to reasonable bounds
+        scale_factor = max(0.7, min(1.3, scale_factor))
+        
+        # Adjust font sizes and leading proportionally while preserving hierarchy
+        base_font_size = style_definitions["article_style"].fontSize
+        base_leading = style_definitions["article_style"].leading
+        
+        for style_name, style in style_definitions.items():
+            # Calculate relative size compared to base
+            relative_size = style.fontSize / base_font_size
+            relative_leading = style.leading / base_leading
             
-            # Adjust spacing proportionally
+            # Apply scaling while maintaining relative sizes
+            style.fontSize = max(6, int(base_font_size * scale_factor * relative_size))
+            style.leading = max(8, int(base_leading * scale_factor * relative_leading))
+            
+            # Scale spacing proportionally
             if hasattr(style, 'spaceBefore'):
                 style.spaceBefore = int(style.spaceBefore * scale_factor)
             if hasattr(style, 'spaceAfter'):
                 style.spaceAfter = int(style.spaceAfter * scale_factor)
             if hasattr(style, 'firstLineIndent'):
                 style.firstLineIndent = int(style.firstLineIndent * scale_factor)
+            if hasattr(style, 'borderPadding'):
+                style.borderPadding = int(style.borderPadding * scale_factor)
     
     # Build flowables with adjusted styles
     flowables = []
