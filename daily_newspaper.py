@@ -222,7 +222,7 @@ def summarize_text_with_openai(text, max_tokens=SUMMARY_MAX_TOKENS, temperature=
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[{
                 "role": "system",
                 "content": f"""You are an experienced newspaper editor who writes concise, impactful summaries.
@@ -474,7 +474,7 @@ def fetch_random_quote(language=DEFAULT_LANGUAGE):
             client = OpenAI(api_key=OPENAI_API_KEY)
             
             response = client.chat.completions.create(
-                model="gpt-4",
+                model="gpt-4o-mini",
                 messages=[{
                     "role": "system",
                     "content": f"You are a professional translator specializing in literary and philosophical texts. Translate this quote to {language}, maintaining its poetic and impactful nature while ensuring it sounds natural."
@@ -526,7 +526,7 @@ def fetch_daily_boost(language=DEFAULT_LANGUAGE):
         
         # Generate a motivational quote using AI
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[{
                 "role": "system",
                 "content": f"""You are a wise philosopher and motivational speaker who creates impactful quotes in {language}.
@@ -545,7 +545,7 @@ def fetch_daily_boost(language=DEFAULT_LANGUAGE):
         
         # Generate a personalized goal/intention
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[{
                 "role": "system",
                 "content": f"""You are a life coach who creates personalized, actionable daily intentions in {language}.
