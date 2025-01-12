@@ -65,14 +65,33 @@ PRINTER_NAME = "YOUR_PRINTER_NAME"  # Leave empty for default printer
 
 Run the application using Poetry:
 ```bash
+# Basic usage - generates PDF only
 poetry run python daily_newspaper.py
+
+# Use cached content (faster, good for testing layout)
+poetry run python daily_newspaper.py --use-cache
+
+# Auto-print to default printer
+poetry run python daily_newspaper.py --print
+
+# Specify number of articles per source
+poetry run python daily_newspaper.py --articles 3
+
+# Combine multiple options
+poetry run python daily_newspaper.py --use-cache --print --articles 3
 ```
 
+### Command Line Options
+
+- `--use-cache`: Use cached content instead of fetching new data (useful for testing layout changes)
+- `--print`: Automatically print to default printer after generation
+- `--articles N`: Fetch N articles per source (default is 5)
+
 The application will:
-1. Fetch news from all sources
+1. Fetch news from all sources (or use cache if specified)
 2. Summarize and translate content
 3. Generate a PDF in the `press` directory
-4. Optionally print the newspaper if configured
+4. Optionally print the newspaper if `--print` is used or printer is configured
 
 ## PDF Output
 
