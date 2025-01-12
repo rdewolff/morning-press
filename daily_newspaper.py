@@ -35,6 +35,7 @@ from babel.dates import format_date
 import locale
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -569,6 +570,19 @@ def fetch_daily_boost(language=DEFAULT_LANGUAGE):
 # ------------------------------------------------------
 # PDF GENERATION
 # ------------------------------------------------------
+# Create a shared canvas class for both test and main documents
+class PageCountCanvas(canvas.Canvas):
+    def __init__(self, *args, **kwargs):
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        self._current_page = 1  # Start at 1 instead of 0
+
+    def showPage(self):
+        canvas.Canvas.showPage(self)
+        self._current_page += 1  # Increment after showing the page
+
+    def save(self):
+        canvas.Canvas.save(self)
+
 def calculate_content_size(doc, content, styles):
     """
     Calculate the approximate size of content with current styles.
@@ -586,6 +600,9 @@ def calculate_content_size(doc, content, styles):
         def handle_pageBegin(self):
             self.page_count += 1
             super().handle_pageBegin()
+
+        def handle_pageEnd(self):
+            super().handle_pageEnd()
     
     doc_test = SizeDocTemplate()
     doc_test.addPageTemplates(doc.pageTemplates)
@@ -608,47 +625,69 @@ def calculate_content_size(doc, content, styles):
                 flowables.append(Paragraph(text, styles["section_header_style"]))
             current_section = text
         elif current_section == "CITATION DU JOUR":
-            if text.startswith("❝"):
+            if text.startswith("❝") or text.startswith("«"):
                 flowables.append(Paragraph(text, styles["quote_style"]))
-            elif text.startswith("—"):
+            elif text.startswith("—") or text.startswith("-"):
                 flowables.append(Paragraph(text, styles["attribution_style"]))
-        elif text.strip().startswith(("1.", "2.", "3.", "4.", "5.")):
-            title_text = text.split(". ", 1)[1] if ". " in text else text
-            flowables.append(Paragraph(title_text, styles["article_title_style"]))
+        elif text.strip().split('.')[0].isdigit():
+            flowables.append(Paragraph(text, styles["article_title_style"]))
         else:
             flowables.append(Paragraph(text, style_to_use))
     
+    # Add a spacer at the end to ensure content fills all pages
+    flowables.append(Spacer(1, 1))
+    
     # Build document to count pages
-    doc_test.build(flowables)
+    doc_test.build(flowables, canvasmaker=PageCountCanvas)
     return doc_test.page_count
 
 def build_newspaper_pdf(pdf_filename, story_content, target_pages=2):
     """
     Generate a multi-column PDF (A4) with an old-school newspaper style.
     Dynamically adjusts font sizes to fit content within the specified number of pages.
-    :param pdf_filename: Output PDF file path
-    :param story_content: Content to write
-    :param target_pages: Number of pages to target (default: 2)
     """
     page_width, page_height = A4
     
     # Convert 5mm to points (reportlab uses points)
     margin = 0.5 * cm  # 5mm = 0.5cm
+    footer_height = 1 * cm  # Height for the footer
     
-    doc = BaseDocTemplate(
+    class NumberedDocTemplate(BaseDocTemplate):
+        def __init__(self, *args, **kwargs):
+            BaseDocTemplate.__init__(self, *args, **kwargs)
+            self.current_page = 0
+
+        def handle_pageBegin(self):
+            self.current_page += 1
+            super().handle_pageBegin()
+    
+    doc = NumberedDocTemplate(
         pdf_filename,
         pagesize=A4,
         leftMargin=margin,
         rightMargin=margin,
         topMargin=margin,
-        bottomMargin=margin,
+        bottomMargin=margin + footer_height,  # Add space for footer
     )
+    
+    def footer(canvas, doc):
+        canvas.saveState()
+        # Get current date in French format
+        try:
+            date_str = format_date(datetime.datetime.now(), format="dd/MM/yyyy", locale='fr')
+        except:
+            date_str = datetime.datetime.now().strftime("%d/%m/%Y")
+            
+        footer_text = f"Morning Press - {date_str} - Page {canvas._current_page} of {target_pages}"
+        canvas.setFont("Times-Roman", 8)
+        canvas.drawCentredString(page_width/2, margin/2, footer_text)
+        canvas.restoreState()
     
     gutter = 0.3 * cm  # Reduced gutter to match smaller margins
     column_width = (page_width - 2 * margin - 2 * gutter) / 3
     
-    # Define frames
-    frames = [
+    # Define frames for the content
+    content_frames = [
         Frame(
             doc.leftMargin + i * (column_width + gutter),
             doc.bottomMargin,
@@ -663,7 +702,12 @@ def build_newspaper_pdf(pdf_filename, story_content, target_pages=2):
         for i in range(3)
     ]
     
-    page_template = PageTemplate(id="ThreeColumns", frames=frames)
+    # Create page template with footer
+    page_template = PageTemplate(
+        id="ThreeColumns",
+        frames=content_frames,
+        onPage=footer
+    )
     doc.addPageTemplates([page_template])
     
     styles = getSampleStyleSheet()
@@ -848,8 +892,11 @@ def build_newspaper_pdf(pdf_filename, story_content, target_pages=2):
         else:
             flowables.append(Paragraph(text, style_to_use))
     
-    # Build the PDF
-    doc.build(flowables)
+    # Add a spacer at the end to ensure content fills all pages
+    flowables.append(Spacer(1, 1))
+    
+    # Build the PDF with our custom canvas
+    doc.build(flowables, canvasmaker=PageCountCanvas)
 
 def print_pdf(pdf_filename, printer_name=""):
     """Print the PDF file using the 'lpr' command."""
