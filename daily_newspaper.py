@@ -847,13 +847,18 @@ def print_pdf(pdf_filename, printer_name=""):
 # ------------------------------------------------------
 # MAIN
 # ------------------------------------------------------
-def main(use_cache=False):
+def main(use_cache=False, auto_print=False, articles_per_source=None):
     """
     Main function to generate the morning press.
     :param use_cache: If True, use cached content if available
+    :param auto_print: If True, automatically print to default printer
+    :param articles_per_source: Number of articles to fetch per source (overrides MAX_ITEMS)
     """
     # Create press directory if it doesn't exist
     os.makedirs("press", exist_ok=True)
+
+    # Set number of articles to fetch
+    num_articles = articles_per_source if articles_per_source is not None else MAX_ITEMS
 
     # Generate unique filename with timestamp
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -877,7 +882,7 @@ def main(use_cache=False):
         
         # Fetch and process Le Temps news
         print("Fetching Le Temps news...")
-        le_temps_news = fetch_rss_headlines(LE_TEMPS_RSS, MAX_ITEMS, DEFAULT_LANGUAGE)
+        le_temps_news = fetch_rss_headlines(LE_TEMPS_RSS, num_articles, DEFAULT_LANGUAGE)
         
         if le_temps_news:
             content.append("LE TEMPS - TOP STORIES")
@@ -891,7 +896,7 @@ def main(use_cache=False):
         
         # Fetch and process RTS news
         print("Fetching RTS news...")
-        rts_news = fetch_rts_news(MAX_ITEMS, DEFAULT_LANGUAGE)
+        rts_news = fetch_rts_news(num_articles, DEFAULT_LANGUAGE)
         
         if rts_news:
             content.append("RTS - TOP STORIES")
@@ -905,7 +910,7 @@ def main(use_cache=False):
         
         # Fetch and process Hacker News stories
         print("Fetching Hacker News stories...")
-        hn_news = fetch_hackernews_top_stories(MAX_ITEMS, DEFAULT_LANGUAGE)
+        hn_news = fetch_hackernews_top_stories(num_articles, DEFAULT_LANGUAGE)
         
         if hn_news:
             content.append("HACKER NEWS - TOP STORIES")
@@ -950,14 +955,26 @@ def main(use_cache=False):
     # Generate PDF
     build_newspaper_pdf(pdf_filename, content)
     
-    # Print if printer name is configured
-    if PRINTER_NAME:
+    # Print if auto_print is True or printer name is configured
+    if auto_print or PRINTER_NAME:
         print_pdf(pdf_filename, PRINTER_NAME)
     
     print(f"Morning Press generated: {pdf_filename}")
 
 # ------------------------------------------------------
 if __name__ == "__main__":
-    # Check if --use-cache flag is provided
+    # Parse command line arguments
     use_cache = "--use-cache" in sys.argv
-    main(use_cache)
+    auto_print = "--print" in sys.argv
+    
+    # Parse number of articles if provided
+    articles_per_source = None
+    for i, arg in enumerate(sys.argv):
+        if arg == "--articles":
+            try:
+                articles_per_source = int(sys.argv[i + 1])
+            except (IndexError, ValueError):
+                print("[ERROR] --articles requires a number value")
+                sys.exit(1)
+    
+    main(use_cache, auto_print, articles_per_source)
