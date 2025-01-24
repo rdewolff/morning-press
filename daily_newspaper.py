@@ -959,7 +959,7 @@ def main(use_cache=False, auto_print=False, articles_per_source=None, target_pag
             content.append("LE TEMPS - TOP STORIES")
             content.append(SECTION_SEPARATOR)
             for idx, item in enumerate(le_temps_news, 1):
-                content.append(f"{idx}. {item['title']}")  # Keep the number with the title
+                content.append(f"{idx}. {item['title']}")
                 if item.get('content'):
                     content.append("")
                     content.append(item['content'])
@@ -1031,6 +1031,26 @@ def main(use_cache=False, auto_print=False, articles_per_source=None, target_pag
         print_pdf(pdf_filename, PRINTER_NAME)
     
     print(f"Morning Press generated: {pdf_filename}")
+
+    # Ask user if they want to open the PDF
+    while True:
+        response = input("Would you like to open the PDF? (y/n): ").lower().strip()
+        if response in ['y', 'yes']:
+            try:
+                if sys.platform == "darwin":  # macOS
+                    subprocess.run(["open", pdf_filename])
+                elif sys.platform == "win32":  # Windows
+                    os.startfile(pdf_filename)
+                else:  # Linux/Unix
+                    subprocess.run(["xdg-open", pdf_filename])
+                break
+            except Exception as e:
+                print(f"Error opening PDF: {e}")
+                break
+        elif response in ['n', 'no']:
+            break
+        else:
+            print("Please answer 'y' or 'n'")
 
 # ------------------------------------------------------
 if __name__ == "__main__":
